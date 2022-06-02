@@ -1,0 +1,81 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workspace": {
+            "type": "String"
+        }
+    },
+    "resources": [
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/b71fd9a5-3463-47f0-8ff6-9dee33858944')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/b71fd9a5-3463-47f0-8ff6-9dee33858944')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2021-10-01-preview",
+            "properties": {
+                "displayName": "morethan5failedaadsigninin20minutes",
+                "description": "This rule detects if a user has more than 5 failed signin to AAD in 20 minutes within the last 1 day and fire an incident",
+                "severity": "Medium",
+                "enabled": false,
+                "query": "SigninLogs\r\n| where TimeGenerated > ago(1d)\r\n| where ResultType !in ( \"0\",\"50125\", \"50140\")\r\n| summarize starttime = min(TimeGenerated), endtime = max(TimeGenerated), failurecount = count() by bin (TimeGenerated, 20m), UserDisplayName, AppDisplayName, Type, UserPrincipalName\r\n| where failurecount >= 5",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "P1D",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "tactics": [
+                    "PrivilegeEscalation"
+                ],
+                "techniques": [
+                    "T1134",
+                    "T1543",
+                    "T1078"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "SingleAlert"
+                },
+                "alertDetailsOverride": null,
+                "customDetails": {
+                    "time": "TimeGenerated",
+                    "user": "UserDisplayName"
+                },
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "FullName",
+                                "columnName": "UserPrincipalName"
+                            }
+                        ]
+                    },
+                    {
+                        "entityType": "IP",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Address",
+                                "columnName": "AppDisplayName"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null
+            }
+        }
+    ]
+}
