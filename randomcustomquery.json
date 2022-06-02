@@ -4,9 +4,11 @@
   "parameters": {
     "workspaceName": {
       "type": "string"
+      "defaultValue": "test1loganalysis"
     },
     "location": {
       "type": "string"
+      "defaultValue": "Southeast Asia"
     }
   },
   "resources": [
@@ -17,7 +19,7 @@
       "location": "[parameters('location')]",
       "resources": [
         {
-          "type": "Microsoft.OperationalInsights/workspaces/providers/savedSearches",
+          "type": "savedSearches",
           "apiVersion": "2020-08-01",
           "name": "randomcustomquery",
           "dependsOn": [
