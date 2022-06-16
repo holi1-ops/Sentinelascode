@@ -1,0 +1,42 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-08-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workspaceName": {
+            "type": "string",
+            "defaultValue": "test1loganalysis"
+        },
+        "location": {
+            "type": "string",
+            "defaultValue": "Southeast Asia"
+        }
+    },
+    "resources": [
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "apiVersion": "2017-03-15-preview",
+            "name": "[parameters('workspaceName')]",
+            "location": "[parameters('location')]",
+            "resources": [
+                {
+                    "type": "savedSearches",
+                    "apiVersion": "2020-08-01",
+                    "name": "random1",
+                    "dependsOn": [
+                        "[concat('Microsoft.OperationalInsights/workspaces/', parameters('workspaceName'))]"
+                    ],
+                    "properties": {
+                        "etag": "*",
+                        "displayName": "random1",
+                        "category": "Security",
+                        "FunctionAlias": "random1",
+                        "query": "SigninLogs\r\n| take 10 \r\n| extend writer=\"Seven\"",
+                        "version": 1,
+                        "functionParameters": "disabled:bool=False"
+                    }
+                }
+            ]
+        }
+    ]
+}
+ 
