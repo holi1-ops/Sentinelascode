@@ -30,7 +30,7 @@
                         "displayName": "randomcustomquery",
                         "category": "Security",
                         "FunctionAlias": "randomcustomquery",
-                        "query": "SigninLogs\r\n| take 10 \r\n| extend writer=\"Seven\"",
+                        "query": "SigninLogs\r\n| take 10 \r\n| extend writer=\"holi1\"",
                         "version": 1,
                         "functionParameters": "disabled:bool=False"
                     }
