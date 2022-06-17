@@ -1,0 +1,41 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-08-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workspaceName": {
+            "type": "string",
+            "defaultValue": "test1loganalysis"
+        },
+        "location": {
+            "type": "string",
+            "defaultValue": "Southeast Asia"
+        }
+    },
+    "resources": [
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "apiVersion": "2017-03-15-preview",
+            "name": "[parameters('workspaceName')]",
+            "location": "[parameters('location')]",
+            "resources": [
+                {
+                    "type": "savedSearches",
+                    "apiVersion": "2020-08-01",
+                    "name": "Customdemo1",
+                    "dependsOn": [
+                        "[concat('Microsoft.OperationalInsights/workspaces/', parameters('workspaceName'))]"
+                    ],
+                    "properties": {
+                        "etag": "*",
+                        "displayName": "Customdemo1",
+                        "category": "Security",
+                        "FunctionAlias": "Customdemo1",
+                        "query": "let SyslogLogon=(disabled:bool=false){\r\nSyslog\r\n | where ProcessName == 'rsyslogd'\r\n | extend\r\n  EventVendor = 'Linux'\r\n  , EventProduct='Syslogconnector'\r\n  , EventCount=int(1)\r\n  , EventSchemaVersion='0.1.0'\r\n  , EventResult= iff (ProcessName has_cs 'syslog', 'Success', 'Failure')\r\n  , EventStartTime=EventTime\r\n  , EventEndTime=TimeGenerated\r\n  , EventType='Logon'\r\n  , LogonMethod='Syslogtest'\r\n  , TargetUrl =tostring(SyslogMessage)\r\n  , TargetUsernameType='Simple'\r\n  , TargetUserIdType='SYSSId'\r\n  | project-rename\r\n    EventOriginalUid= ProcessID\r\n  , EventOriginalResultDetails= SyslogMessage\r\n  , TargetUsername= HostName\r\n  , TargetUserType=Facility\r\n  , TargetUserId=ProcessName \r\n  , SrcDvcIpAddr=HostIP\r\n  , HttpUserAgent=Computer\r\n\/\/ **** Aliases\r\n| extend\r\n       User=TargetUsername\r\n      , LogonTarget=tostring(split(TargetUrl,'?')[0])\r\n      , Dvc=EventVendor\r\n};\r\n  SyslogLogon(disabled)",
+                        "version": 1,
+                        "functionParameters": "disabled:bool=False"
+                    }
+                }
+            ]
+        }
+    ]
+}
