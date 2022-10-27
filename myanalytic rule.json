@@ -18,7 +18,7 @@
                 "description": "An example for a scheduled rule",
                 "severity": "High",
                 "enabled": false,
-                "query": "Heartbeat",
+                "query": "Heartbeat | where computer contains "EP"",
                 "queryFrequency": "PT20M",
                 "queryPeriod": "PT30M",
                 "triggerOperator": "GreaterThan",
