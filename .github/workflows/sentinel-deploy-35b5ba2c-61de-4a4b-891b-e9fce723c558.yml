@@ -30,7 +30,7 @@ jobs:
       branch: 'main'
       sourceControlId: '35b5ba2c-61de-4a4b-891b-e9fce723c558'
       githubAuthToken: ${{ secrets.GITHUB_TOKEN }}
-      smartDeployment: 'true'
+      smartDeployment: 'false'
 
     steps:
     - name: Login to Azure (Attempt 1)
