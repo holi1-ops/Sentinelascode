@@ -8,10 +8,11 @@
    },
    "resources":[
       {
-         "id":"/subscriptions/84930190-5574-4d97-ade6-d4bce0a68259/resourceGroups/sentinel-prd-au3-1-law-rg/providers/Microsoft.OperationalInsights/workspaces/sentinel-prd-au3-1-law/providers/Microsoft.SecurityInsights/AutomationRules/e5b1cb4f-dabb-4f00-bcd9-feeea56890a8",
-         "name":"e5b1cb4f-dabb-4f00-bcd9-feeea56890a8",
-         "etag":"\"7c00b14a-0000-1a00-0000-635096a90000\"",
-         "type":"Microsoft.SecurityInsights/AutomationRules",
+         "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/automationRules/9c70a9b2-0bc4-498f-99df-dd757f94344a')]",
+         "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/9c70a9b2-0bc4-498f-99df-dd757f94344a')]",
+         "type": "Microsoft.OperationalInsights/workspaces/providers/automationRules",
+         "kind": "Scheduled",
+         "apiVersion": "2019-01-01-preview",
          "properties":{
             "displayName":"Close problematic incidents",
             "order":2,
