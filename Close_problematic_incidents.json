@@ -1,0 +1,56 @@
+{
+  "id": "/subscriptions/84930190-5574-4d97-ade6-d4bce0a68259/resourceGroups/sentinel-prd-au3-1-law-rg/providers/Microsoft.OperationalInsights/workspaces/sentinel-prd-au3-1-law/providers/Microsoft.SecurityInsights/AutomationRules/e5b1cb4f-dabb-4f00-bcd9-feeea56890a8",
+  "name": "e5b1cb4f-dabb-4f00-bcd9-feeea56890a8",
+  "etag": "\"7c00b14a-0000-1a00-0000-635096a90000\"",
+  "type": "Microsoft.SecurityInsights/AutomationRules",
+  "properties": {
+    "displayName": "Close problematic incidents",
+    "order": 2,
+    "triggeringLogic": {
+      "isEnabled": true,
+      "triggersOn": "Incidents",
+      "triggersWhen": "Created",
+      "conditions": [
+        {
+          "conditionType": "Property",
+          "conditionProperties": {
+            "propertyName": "IncidentTitle",
+            "operator": "Equals",
+            "propertyValues": [
+              "Unfamiliar sign-in properties"
+            ]
+          }
+        }
+      ]
+    },
+    "actions": [
+      {
+        "order": 1,
+        "actionType": "ModifyProperties",
+        "actionConfiguration": {
+          "severity": null,
+          "status": "Closed",
+          "classification": "FalsePositive",
+          "classificationReason": "IncorrectAlertLogic",
+          "classificationComment": "The rule is problematic and cannot be switched off in Sentinel, hence auto-closing it via an automation rule.",
+          "owner": null,
+          "labels": null
+        }
+      }
+    ],
+    "lastModifiedTimeUtc": "2022-10-20T00:30:33Z",
+    "createdTimeUtc": "2022-09-19T00:42:05Z",
+    "lastModifiedBy": {
+      "objectId": "90e1e705-1a96-44d3-b849-21edd483ef2a",
+      "email": null,
+      "name": "Nathan Ashley (Admin)",
+      "userPrincipalName": "NASAdmin@quantium.com"
+    },
+    "createdBy": {
+      "objectId": "90e1e705-1a96-44d3-b849-21edd483ef2a",
+      "email": null,
+      "name": "Nathan Ashley (Admin)",
+      "userPrincipalName": "NASAdmin@quantium.com"
+    }
+  }
+}
