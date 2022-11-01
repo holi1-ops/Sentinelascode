@@ -1,59 +1,101 @@
 {
-    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
-        "$connections": {
-            "defaultValue": {},
-            "type": "Object"
-        }
-    },
-    "triggers": {
-        "When_Azure_Sentinel_incident_creation_rule_was_triggered": {
-            "type": "ApiConnectionWebhook",
-            "inputs": {
-                "body": {
-                    "callback_url": "@{listCallbackUrl()}"
-                },
-                "host": {
-                    "connection": {
-                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
-                    }
-                },
-                "path": "/incident-creation"
-            }
-        }
-    },
-    "actions": {
-        "Send_an_email_(V2)": {
-            "runAfter": {},
-            "type": "ApiConnection",
-            "inputs": {
-                "body": {
-                    "Body": "<p>There's an incident created in Sentinel. <br>\n<br>\nIncident Title @{triggerBody()?['object']?['properties']?['title']}<br>\nSeverity @{triggerBody()?['object']?['properties']?['severity']}<br>\nDescription @{triggerBody()?['object']?['properties']?['description']}<br>\nTime@{triggerBody()?['object']?['properties']?['createdTimeUtc']}</p>",
-                    "Subject": "Sentinel incident @{triggerBody()?['object']?['id']}created",
-                    "To": "holi1@microsoft.com"
-                },
-                "host": {
-                    "connection": {
-                        "name": "@parameters('$connections')['office365']['connectionId']"
-                    }
-                },
-                "method": "post",
-                "path": "/v2/Mail"
-            }
-        }
-    },
-    "outputs": {},
-    "connections": {
-        "azuresentinel": {
-            "id": "/subscriptions/0000-0000/providers/Microsoft.Web/locations/southeastasia/managedApis/azuresentinel",
-            "connectionId": "",
-            "connectionName": ""
+        "workflows_sendmailwhenincident_name": {
+            "defaultValue": "sendmailwhenincident",
+            "type": "String"
         },
-        "office365": {
-            "id": "/subscriptions/0000-0000/providers/Microsoft.Web/locations/southeastasia/managedApis/office365",
-            "connectionId": "",
-            "connectionName": ""
+        "connections_azuresentinel_sendmailwhenincident_externalid": {
+            "defaultValue": "/subscriptions/eef87bf6-264c-45c9-8850-ab4e78d90cfe/resourceGroups/Sentinellab20211201/providers/Microsoft.Web/connections/azuresentinel-sendmailwhenincident",
+            "type": "String"
+        },
+        "connections_office365_externalid": {
+            "defaultValue": "/subscriptions/eef87bf6-264c-45c9-8850-ab4e78d90cfe/resourceGroups/Sentinellab20211201/providers/Microsoft.Web/connections/office365",
+            "type": "String"
         }
-    }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('workflows_sendmailwhenincident_name')]",
+            "location": "southeastasia",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "$connections": {
+                            "defaultValue": {},
+                            "type": "Object"
+                        }
+                    },
+                    "triggers": {
+                        "When_Azure_Sentinel_incident_creation_rule_was_triggered": {
+                            "type": "ApiConnectionWebhook",
+                            "inputs": {
+                                "body": {
+                                    "callback_url": "@{listCallbackUrl()}"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                    }
+                                },
+                                "path": "/incident-creation"
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Send_an_email_(V2)": {
+                            "runAfter": {},
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "body": {
+                                    "Body": "<p>There's an incident created in Sentinel. <br>\n<br>\nIncident Title @{triggerBody()?['object']?['properties']?['title']}<br>\nSeverity @{triggerBody()?['object']?['properties']?['severity']}<br>\nDescription @{triggerBody()?['object']?['properties']?['description']}<br>\nTime@{triggerBody()?['object']?['properties']?['createdTimeUtc']}</p>",
+                                    "Subject": "Sentinel incident @{triggerBody()?['object']?['id']}created",
+                                    "To": "holi1@microsoft.com"
+                                },
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['office365']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "path": "/v2/Mail"
+                            }
+                        }
+                    },
+                    "outputs": {}
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "azuresentinel": {
+                                "connectionId": "[parameters('connections_azuresentinel_sendmailwhenincident_externalid')]",
+                                "connectionName": "[concat('azuresentinel-', parameters('workflows_sendmailwhenincident_name'))]",
+                                "connectionProperties": {
+                                    "authentication": {
+                                        "type": "ManagedServiceIdentity"
+                                    }
+                                },
+                                "id": "/subscriptions/eef87bf6-264c-45c9-8850-ab4e78d90cfe/providers/Microsoft.Web/locations/southeastasia/managedApis/azuresentinel"
+                            },
+                            "office365": {
+                                "connectionId": "[parameters('connections_office365_externalid')]",
+                                "connectionName": "office365",
+                                "id": "/subscriptions/eef87bf6-264c-45c9-8850-ab4e78d90cfe/providers/Microsoft.Web/locations/southeastasia/managedApis/office365"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ]
 }
