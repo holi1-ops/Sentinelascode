@@ -1,0 +1,863 @@
+{
+   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+   "contentVersion": "1.0.0.0",
+   "parameters": {
+      "tenantId": {
+         "type": "string",
+         "metadata": {
+            "description": "Directory (tenant) ID."
+         }
+      },
+      "deployEnvironment": {
+         "type": "string",
+         "allowedValues": [
+            "dev",
+            "tst",
+            "prd",
+            "fix",
+            "upd"
+         ],
+         "metadata": {
+            "description": "The deployment environment of the logic app/automation rule resources."
+         }
+      },
+      "appName": {
+         "type": "string",
+         "defaultValue": "sentinel-enrichincidentuser",
+         "metadata": {
+            "description": "The name of the logic app/automation rule to deploy."
+         }
+      },
+      "appState": {
+         "type": "string",
+         "defaultValue": "Enabled",
+         "allowedValues": [
+            "Enabled",
+            "Disabled"
+         ],
+         "metadata": {
+            "description": "The state of the logic app. It must be enabled in order to be triggered successfully."
+         }
+      },
+      "workspaceResourceGroup": {
+         "type": "string",
+         "metadata": {
+            "description": "The name of the resource group where the Security Log Analytics workspace is located."
+         }
+      },
+      "workspaceName": {
+         "type": "string",
+         "metadata": {
+            "description": "The name of the log analytics workspace where the Sentinel solution resides in."
+         }
+      },
+      "azureMonitorServicePrincipalClientId": {
+         "type": "string",
+         "metadata": {
+            "description": "The Application (client) ID of the service principal (app registration) created for authenticating with Azure Monitor."
+         }
+      },
+      "azureMonitorServicePrincipalSecretValue": {
+         "type": "securestring",
+         "metadata": {
+            "description": "The value of the client secret of the service principal (app registration) created for authenticating with Azure Monitor. This value is stored in the key vault."
+         }
+      },
+      "identityWatchlistName": {
+         "type": "string",
+         "defaultValue": "identity",
+         "metadata": {
+            "description": "The name of the watchlist containing details to enrich incidents."
+         }
+      },
+      "ruleEnabled": {
+         "type": "string",
+         "defaultValue": "True",
+         "allowedValues": [
+            "True",
+            "False"
+         ],
+         "metadata": {
+            "description": "The status of the automation rule. If enabled, will run whenever its trigger conditions are met."
+         }
+      }
+   },
+   "variables": {
+      "LogicAppName": "[concat('nsoc-', parameters('deployEnvironment'), '-', parameters('appName'), '-lap-ae')]",
+      "AutomationRuleName": "[concat('nsoc-', parameters('deployEnvironment'), '-', parameters('appName'), '-automrule')]",
+      "AzureMonitorLogsConnectionName": "[concat('azuremonitor-', variables('LogicAppName'))]",
+      "AzureSentinelConnectionName": "[concat('azuresentinel-', variables('LogicAppName'))]",
+      "AutomationTriggerConditions": [
+         {
+            "conditionType": "Property",
+            "conditionProperties": {
+               "propertyName": "AccountName",
+               "operator": "NotEquals",
+               "propertyValues": [
+                  "\"\""
+               ]
+            }
+         }
+      ]
+   },
+   "resources": [
+      {
+         "type": "Microsoft.Web/connections",
+         "apiVersion": "2016-06-01",
+         "name": "[variables('AzureMonitorLogsConnectionName')]",
+         "location": "[resourceGroup().location]",
+         "properties": {
+            "displayName": "[variables('AzureMonitorLogsConnectionName')]",
+            "parameterValues": {
+               "token:clientId": "[parameters('azureMonitorServicePrincipalClientId')]",
+               "token:clientSecret": "[parameters('azureMonitorServicePrincipalSecretValue')]",
+               "token:TenantId": "[parameters('tenantId')]",
+               "token:grantType": "client_credentials"
+            },
+            "api": {
+               "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuremonitorlogs')]"
+            }
+         }
+      },
+      {
+         "type": "Microsoft.Web/connections",
+         "apiVersion": "2016-06-01",
+         "name": "[variables('AzureSentinelConnectionName')]",
+         "location": "[resourceGroup().location]",
+         "properties": {
+            "displayName": "[variables('AzureSentinelConnectionName')]",
+            "customParameterValues": {},
+            "parameterValueType": "Alternative",
+            "api": {
+               "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]"
+            }
+         }
+      },
+      {
+         "type": "Microsoft.Logic/workflows",
+         "apiVersion": "2019-05-01",
+         "name": "[variables('LogicAppName')]",
+         "location": "[resourceGroup().location]",
+         "identity": {
+            "type": "SystemAssigned"
+         },
+         "dependsOn": [
+            "[resourceId('Microsoft.Web/connections', variables('AzureMonitorLogsConnectionName'))]",
+            "[resourceId('Microsoft.Web/connections', variables('AzureSentinelConnectionName'))]"
+         ],
+         "resources": [
+            {
+               "type": "/providers/diagnosticSettings",
+               "apiVersion": "2021-05-01-preview",
+               "name": "[concat('Microsoft.Insights/', variables('LogicAppName'))]",
+               "dependsOn": [
+                  "[resourceId('Microsoft.Logic/workflows', variables('LogicAppName'))]"
+               ],
+               "properties": {
+                  "workspaceId": "[resourceId(parameters('workspaceResourceGroup'), 'Microsoft.OperationalInsights/workspaces', parameters('WorkspaceName'))]",
+                  "metrics": [
+                     {
+                        "category": "AllMetrics",
+                        "enabled": false
+                     }
+                  ],
+                  "logs": [
+                     {
+                        "category": "WorkflowRuntime",
+                        "enabled": true
+                     }
+                  ]
+               }
+            }
+         ],
+         "properties": {
+            "state": "[parameters('appState')]",
+            "definition": {
+               "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+               "actions": {
+                  "Check_for_compromised_users_in_alert": {
+                     "actions": {
+                        "For_each_-_Alert_Identity": {
+                           "actions": {
+                              "Check_if_match_found_in_watchlist": {
+                                 "actions": {
+                                    "Add_comment_-_Compromised_entity_match_found": {
+                                       "inputs": {
+                                          "body": {
+                                             "incidentArmId": "@triggerBody()?['object']?['id']",
+                                             "message": "<p>'@{items('For_each_-_Alert_Identity')?['compromisedEntity']}' matches an entry from the '@{parameters('identityWatchlistName')}' watchlist. &nbsp;Match details below: @{body('Create_HTML_table_-_Matched_compromised_identities')}</p>"
+                                          },
+                                          "host": {
+                                             "connection": {
+                                                "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                             }
+                                          },
+                                          "method": "post",
+                                          "path": "/Incidents/Comment"
+                                       },
+                                       "runAfter": {
+                                          "Create_HTML_table_-_Matched_compromised_identities": [
+                                             "Succeeded"
+                                          ]
+                                       },
+                                       "type": "ApiConnection"
+                                    },
+                                    "Create_HTML_table_-_Matched_compromised_identities": {
+                                       "inputs": {
+                                          "format": "HTML",
+                                          "from": "@body('Parse_JSON_-_Identities')"
+                                       },
+                                       "runAfter": {
+                                          "Parse_JSON_-_Identities": [
+                                             "Succeeded"
+                                          ]
+                                       },
+                                       "type": "Table"
+                                    },
+                                    "For_each_-_Queried_Identity": {
+                                       "actions": {
+                                          "Add_tag_to_incident_-_Identity_Category": {
+                                             "inputs": {
+                                                "body": {
+                                                   "incidentArmId": "@triggerBody()?['object']?['id']",
+                                                   "tagsToAdd": {
+                                                      "TagsToAdd": [
+                                                         {
+                                                            "Tag": "@{items('For_each_-_Queried_Identity')?['category']}"
+                                                         }
+                                                      ]
+                                                   }
+                                                },
+                                                "host": {
+                                                   "connection": {
+                                                      "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                                   }
+                                                },
+                                                "method": "put",
+                                                "path": "/Incidents"
+                                             },
+                                             "runAfter": {
+                                                "Append_to_identities_array_variable": [
+                                                   "Succeeded"
+                                                ]
+                                             },
+                                             "type": "ApiConnection"
+                                          },
+                                          "Append_to_identities_array_variable": {
+                                             "inputs": {
+                                                "name": "WatchlistIdentities",
+                                                "value": {
+                                                   "category": "@items('For_each_-_Queried_Identity')?['category']",
+                                                   "description": "@items('For_each_-_Queried_Identity')?['description']",
+                                                   "identity": "@items('For_each_-_Queried_Identity')?['identity']",
+                                                   "managedBy": "@items('For_each_-_Queried_Identity')?['managedBy']",
+                                                   "notes": "@items('For_each_-_Queried_Identity')?['notes']",
+                                                   "priority": "@items('For_each_-_Queried_Identity')?['priority']",
+                                                   "work_city": "@items('For_each_-_Queried_Identity')?['work_city']",
+                                                   "work_country": "@items('For_each_-_Queried_Identity')?['work_country']"
+                                                }
+                                             },
+                                             "runAfter": {},
+                                             "type": "AppendToArrayVariable"
+                                          }
+                                       },
+                                       "foreach": "@body('Parse_JSON_-_Queried_identities')",
+                                       "runAfter": {
+                                          "Parse_JSON_-_Queried_identities": [
+                                             "Succeeded"
+                                          ]
+                                       },
+                                       "type": "Foreach"
+                                    },
+                                    "Parse_JSON_-_Identities": {
+                                       "inputs": {
+                                          "content": "@variables('WatchlistIdentities')",
+                                          "schema": {
+                                             "properties": {
+                                                "category": {
+                                                   "type": "string"
+                                                },
+                                                "description": {
+                                                   "type": "string"
+                                                },
+                                                "identity": {
+                                                   "type": "string"
+                                                },
+                                                "managedBy": {
+                                                   "type": "string"
+                                                },
+                                                "notes": {
+                                                   "type": "string"
+                                                },
+                                                "priority": {
+                                                   "type": "string"
+                                                },
+                                                "work_city": {
+                                                   "type": "string"
+                                                },
+                                                "work_country": {
+                                                   "type": "string"
+                                                }
+                                             },
+                                             "type": "array"
+                                          }
+                                       },
+                                       "runAfter": {
+                                          "For_each_-_Queried_Identity": [
+                                             "Succeeded"
+                                          ]
+                                       },
+                                       "type": "ParseJson"
+                                    },
+                                    "Parse_JSON_-_Queried_identities": {
+                                       "inputs": {
+                                          "content": "@body('Run_query_-_match_compromised_users_in_watchlist')?['value']",
+                                          "schema": {
+                                             "items": {
+                                                "properties": {
+                                                   "IP": {
+                                                      "type": "string"
+                                                   },
+                                                   "alert": {
+                                                      "type": "string"
+                                                   },
+                                                   "bunit": {
+                                                      "type": "string"
+                                                   },
+                                                   "category": {
+                                                      "type": "string"
+                                                   },
+                                                   "description": {
+                                                      "type": "string"
+                                                   },
+                                                   "domain": {
+                                                      "type": "string"
+                                                   },
+                                                   "email": {
+                                                      "type": "string"
+                                                   },
+                                                   "endDate": {
+                                                      "type": "string"
+                                                   },
+                                                   "identity": {
+                                                      "type": "string"
+                                                   },
+                                                   "managedBy": {
+                                                      "type": "string"
+                                                   },
+                                                   "notes": {
+                                                      "type": "string"
+                                                   },
+                                                   "phone": {
+                                                      "type": "string"
+                                                   },
+                                                   "priority": {
+                                                      "type": "string"
+                                                   },
+                                                   "sid": {
+                                                      "type": "string"
+                                                   },
+                                                   "startDate": {
+                                                      "type": "string"
+                                                   },
+                                                   "watchlist": {
+                                                      "type": "string"
+                                                   },
+                                                   "work_city": {
+                                                      "type": "string"
+                                                   },
+                                                   "work_country": {
+                                                      "type": "string"
+                                                   }
+                                                },
+                                                "required": [
+                                                   "alert",
+                                                   "bunit",
+                                                   "category",
+                                                   "description",
+                                                   "domain",
+                                                   "email",
+                                                   "endDate",
+                                                   "identity",
+                                                   "IP",
+                                                   "managedBy",
+                                                   "notes",
+                                                   "phone",
+                                                   "priority",
+                                                   "sid",
+                                                   "startDate",
+                                                   "watchlist",
+                                                   "work_city",
+                                                   "work_country"
+                                                ],
+                                                "type": "object"
+                                             },
+                                             "type": "array"
+                                          }
+                                       },
+                                       "runAfter": {},
+                                       "type": "ParseJson"
+                                    }
+                                 },
+                                 "else": {
+                                    "actions": {
+                                       "Add_comment_-_Compromised_entity_match_not_found": {
+                                          "inputs": {
+                                             "body": {
+                                                "incidentArmId": "@triggerBody()?['object']?['id']",
+                                                "message": "<p>'@{items('For_each_-_Alert_Identity')?['compromisedEntity']}' does not match an entry from the '@{parameters('identityWatchlistName')}' watchlist.</p>"
+                                             },
+                                             "host": {
+                                                "connection": {
+                                                   "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                                }
+                                             },
+                                             "method": "post",
+                                             "path": "/Incidents/Comment"
+                                          },
+                                          "runAfter": {},
+                                          "type": "ApiConnection"
+                                       }
+                                    }
+                                 },
+                                 "expression": {
+                                    "and": [
+                                       {
+                                          "greater": [
+                                             "@length(body('Run_query_-_match_compromised_users_in_watchlist')?['value'])",
+                                             0
+                                          ]
+                                       }
+                                    ]
+                                 },
+                                 "runAfter": {
+                                    "Run_query_-_match_compromised_users_in_watchlist": [
+                                       "Succeeded"
+                                    ]
+                                 },
+                                 "type": "If"
+                              },
+                              "Run_query_-_match_compromised_users_in_watchlist": {
+                                 "inputs": {
+                                    "body": "let Payload = (print d = dynamic(@{items('For_each_-_Alert_Identity')})\n| mv-expand d\n| evaluate bag_unpack(d));\nlet watchlistProperties = ( print m = dynamic (@{body('Parse_JSON_-_Watchlist_Identities')?['properties']?['watchlistItems']})\n| mv-expand m\n| evaluate bag_unpack(m));\nlet WatchlistItems = watchlistProperties\n| project ['properties.itemsKeyValue'];\nlet ContainedIdentites = Payload\n| extend dummy = 1\n| join kind=fullouter (WatchlistItems | extend dummy = 1) on dummy\n| where compromisedEntity contains ['properties.itemsKeyValue'].identity;\nContainedIdentites\n| evaluate bag_unpack(['properties.itemsKeyValue'])",
+                                    "host": {
+                                       "connection": {
+                                          "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                                       }
+                                    },
+                                    "method": "post",
+                                    "path": "/queryData",
+                                    "queries": {
+                                       "resourcegroups": "[parameters('workspaceResourceGroup')]",
+                                       "resourcename": "[parameters('workspaceName')]",
+                                       "resourcetype": "Log Analytics Workspace",
+                                       "subscriptions": "[subscription().subscriptionId]",
+                                       "timerange": "Last hour"
+                                    }
+                                 },
+                                 "runAfter": {},
+                                 "type": "ApiConnection"
+                              }
+                           },
+                           "foreach": "@body('Parse_JSON_-_Formatted_Alert_Users')",
+                           "runAfter": {
+                              "Parse_JSON_-_Watchlist_Identities": [
+                                 "Succeeded"
+                              ]
+                           },
+                           "type": "Foreach"
+                        },
+                        "Get_identities_from_watchlist": {
+                           "inputs": {
+                              "host": {
+                                 "connection": {
+                                    "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                                 }
+                              },
+                              "method": "get",
+                              "path": "/Watchlists/subscriptions/@{encodeURIComponent(triggerBody()?['workspaceInfo']?['SubscriptionId'])}/resourceGroups/@{encodeURIComponent(triggerBody()?['workspaceInfo']?['ResourceGroupName'])}/workspaces/@{encodeURIComponent(triggerBody()?['workspaceId'])}/watchlists/@{encodeURIComponent(parameters('identityWatchlistName'))}/watchlistItems"
+                           },
+                           "runAfter": {},
+                           "type": "ApiConnection"
+                        },
+                        "Parse_JSON_-_Watchlist_Identities": {
+                           "inputs": {
+                              "content": "@body('Get_identities_from_watchlist')",
+                              "schema": {
+                                 "properties": {
+                                    "id": {
+                                       "type": "string"
+                                    },
+                                    "properties": {
+                                       "properties": {
+                                          "watchlistItems": {
+                                             "items": {
+                                                "properties": {
+                                                   "etag": {
+                                                      "type": "string"
+                                                   },
+                                                   "id": {
+                                                      "type": "string"
+                                                   },
+                                                   "name": {
+                                                      "type": "string"
+                                                   },
+                                                   "properties.created": {
+                                                      "type": "string"
+                                                   },
+                                                   "properties.createdBy": {
+                                                      "properties": {
+                                                         "email": {
+                                                            "type": "string"
+                                                         },
+                                                         "name": {
+                                                            "type": "string"
+                                                         },
+                                                         "objectId": {
+                                                            "type": "string"
+                                                         }
+                                                      },
+                                                      "type": "object"
+                                                   },
+                                                   "properties.entityMapping": {
+                                                      "properties": {},
+                                                      "type": "object"
+                                                   },
+                                                   "properties.isDeleted": {
+                                                      "type": "boolean"
+                                                   },
+                                                   "properties.itemsKeyValue": {
+                                                      "properties": {
+                                                         "IP": {
+                                                            "type": "string"
+                                                         },
+                                                         "alert": {
+                                                            "type": "string"
+                                                         },
+                                                         "bunit": {
+                                                            "type": "string"
+                                                         },
+                                                         "category": {
+                                                            "type": "string"
+                                                         },
+                                                         "description": {
+                                                            "type": "string"
+                                                         },
+                                                         "domain": {
+                                                            "type": "string"
+                                                         },
+                                                         "email": {
+                                                            "type": "string"
+                                                         },
+                                                         "endDate": {
+                                                            "type": "string"
+                                                         },
+                                                         "identity": {
+                                                            "type": "string"
+                                                         },
+                                                         "managedBy": {
+                                                            "type": "string"
+                                                         },
+                                                         "notes": {
+                                                            "type": "string"
+                                                         },
+                                                         "phone": {
+                                                            "type": "string"
+                                                         },
+                                                         "priority": {
+                                                            "type": "string"
+                                                         },
+                                                         "sid": {
+                                                            "type": "string"
+                                                         },
+                                                         "startDate": {
+                                                            "type": "string"
+                                                         },
+                                                         "watchlist": {
+                                                            "type": "string"
+                                                         },
+                                                         "work_city": {
+                                                            "type": "string"
+                                                         },
+                                                         "work_country": {
+                                                            "type": "string"
+                                                         }
+                                                      },
+                                                      "type": "object"
+                                                   },
+                                                   "properties.tenantId": {
+                                                      "type": "string"
+                                                   },
+                                                   "properties.updated": {
+                                                      "type": "string"
+                                                   },
+                                                   "properties.updatedBy": {
+                                                      "properties": {
+                                                         "email": {
+                                                            "type": "string"
+                                                         },
+                                                         "name": {
+                                                            "type": "string"
+                                                         },
+                                                         "objectId": {
+                                                            "type": "string"
+                                                         }
+                                                      },
+                                                      "type": "object"
+                                                   },
+                                                   "properties.watchlistItemId": {
+                                                      "type": "string"
+                                                   },
+                                                   "properties.watchlistItemType": {
+                                                      "type": "string"
+                                                   },
+                                                   "systemData": {
+                                                      "properties": {
+                                                         "createdAt": {
+                                                            "type": "string"
+                                                         },
+                                                         "createdBy": {
+                                                            "type": "string"
+                                                         },
+                                                         "createdByType": {
+                                                            "type": "string"
+                                                         },
+                                                         "lastModifiedAt": {
+                                                            "type": "string"
+                                                         },
+                                                         "lastModifiedBy": {
+                                                            "type": "string"
+                                                         },
+                                                         "lastModifiedByType": {
+                                                            "type": "string"
+                                                         }
+                                                      },
+                                                      "type": "object"
+                                                   },
+                                                   "type": {
+                                                      "type": "string"
+                                                   }
+                                                },
+                                                "required": [
+                                                   "properties.watchlistItemType",
+                                                   "properties.watchlistItemId",
+                                                   "properties.tenantId",
+                                                   "properties.isDeleted",
+                                                   "properties.created",
+                                                   "properties.updated",
+                                                   "properties.createdBy",
+                                                   "properties.updatedBy",
+                                                   "properties.itemsKeyValue",
+                                                   "properties.entityMapping",
+                                                   "etag",
+                                                   "id",
+                                                   "name",
+                                                   "type",
+                                                   "systemData"
+                                                ],
+                                                "type": "object"
+                                             },
+                                             "type": "array"
+                                          }
+                                       },
+                                       "type": "object"
+                                    },
+                                    "type": {
+                                       "type": "string"
+                                    }
+                                 },
+                                 "type": "object"
+                              }
+                           },
+                           "runAfter": {
+                              "Get_identities_from_watchlist": [
+                                 "Succeeded"
+                              ]
+                           },
+                           "type": "ParseJson"
+                        }
+                     },
+                     "expression": {
+                        "and": [
+                           {
+                              "greater": [
+                                 "@length(variables('FormattedAlertUsers'))",
+                                 0
+                              ]
+                           }
+                        ]
+                     },
+                     "runAfter": {
+                        "Parse_JSON_-_Formatted_Alert_Users": [
+                           "Succeeded"
+                        ]
+                     },
+                     "type": "If"
+                  },
+                  "Entities_-_Get_Accounts": {
+                     "inputs": {
+                        "body": "@triggerBody()?['object']?['properties']?['relatedEntities']",
+                        "host": {
+                           "connection": {
+                              "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                           }
+                        },
+                        "method": "post",
+                        "path": "/entities/account"
+                     },
+                     "runAfter": {
+                        "Initialize_variable_-_Watchlist_Identities": [
+                           "Succeeded"
+                        ]
+                     },
+                     "type": "ApiConnection"
+                  },
+                  "For_each_-_Alert_Account_Entity": {
+                     "actions": {
+                        "Condition": {
+                           "actions": {
+                              "Append_to_array_variable_-_Alert_Users": {
+                                 "inputs": {
+                                    "name": "FormattedAlertUsers",
+                                    "value": {
+                                       "compromisedEntity": "@{items('For_each_-_Alert_Account_Entity')?['additionalData']?['UpnName']}"
+                                    }
+                                 },
+                                 "runAfter": {},
+                                 "type": "AppendToArrayVariable"
+                              }
+                           },
+                           "expression": {
+                              "and": [
+                                 {
+                                    "not": {
+                                       "equals": [
+                                          "@items('For_each_-_Alert_Account_Entity')?['Name']",
+                                          "@null"
+                                       ]
+                                    }
+                                 }
+                              ]
+                           },
+                           "runAfter": {},
+                           "type": "If"
+                        }
+                     },
+                     "foreach": "@body('Entities_-_Get_Accounts')?['Accounts']",
+                     "runAfter": {
+                        "Entities_-_Get_Accounts": [
+                           "Succeeded"
+                        ]
+                     },
+                     "type": "Foreach"
+                  },
+                  "Initialize_variable_-_Formatted_Alert_Users": {
+                     "inputs": {
+                        "variables": [
+                           {
+                              "name": "FormattedAlertUsers",
+                              "type": "array",
+                              "value": []
+                           }
+                        ]
+                     },
+                     "runAfter": {},
+                     "type": "InitializeVariable"
+                  },
+                  "Initialize_variable_-_Watchlist_Identities": {
+                     "inputs": {
+                        "variables": [
+                           {
+                              "name": "WatchlistIdentities",
+                              "type": "array",
+                              "value": []
+                           }
+                        ]
+                     },
+                     "runAfter": {
+                        "Initialize_variable_-_Formatted_Alert_Users": [
+                           "Succeeded"
+                        ]
+                     },
+                     "type": "InitializeVariable"
+                  },
+                  "Parse_JSON_-_Formatted_Alert_Users": {
+                     "inputs": {
+                        "content": "@variables('FormattedAlertUsers')",
+                        "schema": {
+                           "items": {
+                              "properties": {
+                                 "compromisedEntity": {
+                                    "type": "string"
+                                 }
+                              },
+                              "required": [
+                                 "compromisedEntity"
+                              ],
+                              "type": "object"
+                           },
+                           "type": "array"
+                        }
+                     },
+                     "runAfter": {
+                        "For_each_-_Alert_Account_Entity": [
+                           "Succeeded"
+                        ]
+                     },
+                     "type": "ParseJson"
+                  }
+               },
+               "contentVersion": "1.0.0.0",
+               "outputs": {},
+               "parameters": {
+                  "$connections": {
+                     "defaultValue": {},
+                     "type": "Object"
+                  },
+                  "identityWatchlistName": {
+                     "defaultValue": "[parameters('identityWatchlistName')]",
+                     "type": "String"
+                  }
+               },
+               "triggers": {
+                  "Microsoft_Sentinel_incident": {
+                     "inputs": {
+                        "body": {
+                           "callback_url": "@{listCallbackUrl()}"
+                        },
+                        "host": {
+                           "connection": {
+                              "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                           }
+                        },
+                        "path": "/incident-creation"
+                     },
+                     "type": "ApiConnectionWebhook"
+                  }
+               }
+            },
+            "parameters": {
+               "$connections": {
+                  "value": {
+                     "azuremonitorlogs": {
+                        "connectionId": "[resourceId('Microsoft.Web/connections', variables('AzureMonitorLogsConnectionName'))]",
+                        "connectionName": "[variables('AzureMonitorLogsConnectionName')]",
+                        "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuremonitorlogs')]"
+                     },
+                     "azuresentinel": {
+                        "connectionId": "[resourceId('Microsoft.Web/connections', variables('AzureSentinelConnectionName'))]",
+                        "connectionName": "[variables('AzureSentinelConnectionName')]",
+                        "connectionProperties": {
+                           "authentication": {
+                              "type": "ManagedServiceIdentity"
+                           }
+                        },
+                        "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azuresentinel')]"
+                     }
+                  }
+               }
+            }
+         }
+      }
+   ]
+}
